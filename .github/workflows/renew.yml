@@ -1,0 +1,86 @@
+name: DNSHE Domain Auto Renew
+
+on:
+  schedule:
+    # UTC 01:12 = 北京时间 09:12（每月 1、15 日），避开整点/半点以降低飞书限流风险
+    - cron: '12 1 1,15 * *'
+  workflow_dispatch: # 支持在 GitHub 网页手动触发
+
+concurrency:
+  group: dnshe-renew
+  cancel-in-progress: false
+
+permissions:
+  contents: write # 允许回写 last_renew.json
+
+jobs:
+  renew:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run renew script
+        id: renew
+        env:
+          # DNSHE 多账号密钥（支持 1~10，按需配置）：
+          DNSHE_API_KEY_1: ${{ secrets.DNSHE_API_KEY_1 }}
+          DNSHE_API_SECRET_1: ${{ secrets.DNSHE_API_SECRET_1 }}
+          DNSHE_API_KEY_2: ${{ secrets.DNSHE_API_KEY_2 }}
+          DNSHE_API_SECRET_2: ${{ secrets.DNSHE_API_SECRET_2 }}
+          DNSHE_API_KEY_3: ${{ secrets.DNSHE_API_KEY_3 }}
+          DNSHE_API_SECRET_3: ${{ secrets.DNSHE_API_SECRET_3 }}
+          DNSHE_API_KEY_4: ${{ secrets.DNSHE_API_KEY_4 }}
+          DNSHE_API_SECRET_4: ${{ secrets.DNSHE_API_SECRET_4 }}
+          DNSHE_API_KEY_5: ${{ secrets.DNSHE_API_KEY_5 }}
+          DNSHE_API_SECRET_5: ${{ secrets.DNSHE_API_SECRET_5 }}
+          DNSHE_API_KEY_6: ${{ secrets.DNSHE_API_KEY_6 }}
+          DNSHE_API_SECRET_6: ${{ secrets.DNSHE_API_SECRET_6 }}
+          DNSHE_API_KEY_7: ${{ secrets.DNSHE_API_KEY_7 }}
+          DNSHE_API_SECRET_7: ${{ secrets.DNSHE_API_SECRET_7 }}
+          DNSHE_API_KEY_8: ${{ secrets.DNSHE_API_KEY_8 }}
+          DNSHE_API_SECRET_8: ${{ secrets.DNSHE_API_SECRET_8 }}
+          DNSHE_API_KEY_9: ${{ secrets.DNSHE_API_KEY_9 }}
+          DNSHE_API_SECRET_9: ${{ secrets.DNSHE_API_SECRET_9 }}
+          DNSHE_API_KEY_10: ${{ secrets.DNSHE_API_KEY_10 }}
+          DNSHE_API_SECRET_10: ${{ secrets.DNSHE_API_SECRET_10 }}
+          # 飞书通知：
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          FEISHU_SIGN_SECRET: ${{ secrets.FEISHU_SIGN_SECRET }}
+          # 手动触发时发送链路确认消息（定时触发自动为 false）
+          MANUAL_RUN: ${{ github.event_name == 'workflow_dispatch' }}
+        run: python renew_domains.py
+
+      - name: Commit last_renew.json
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add last_renew.json
+          if git diff --cached --quiet; then
+            echo "last_renew.json 无变更"
+          else
+            git commit -m "chore: update last_renew.json"
+            git push
+          fi
+
+      - name: Notify job failure
+        if: failure()
+        env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          FEISHU_SIGN_SECRET: ${{ secrets.FEISHU_SIGN_SECRET }}
+        run: |
+          python - <<'PY'
+          import os
+          from renew_domains import send_feishu
+          run_url = "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          send_feishu(f"❌ DNSHE 自动续期任务失败，请查看 GitHub Actions 日志：\n{run_url}")
+          PY

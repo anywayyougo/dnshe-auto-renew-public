@@ -1,0 +1,12 @@
+# 隐私配置，禁止提交
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 系统文件
+.DS_Store
+Thumbs.db
